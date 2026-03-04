@@ -1,0 +1,56 @@
+name: Sync Fork from Upstream
+
+on:
+  # 每天 UTC 时间 0:00 自动运行（北京时间 8:00）
+  schedule:
+    - cron: '0 0 * * *'
+  # 也可以手动触发
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork repo
+        uses: actions/checkout@v4
+        with:
+          # 获取完整历史，以便合并
+          fetch-depth: 0
+          # 使用默认的 GITHUB_TOKEN
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/ZhuLinsen/daily_stock_analysis.git
+          git fetch upstream
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge upstream/main into fork
+        run: |
+          UPSTREAM_COMMITS=$(git rev-list HEAD..upstream/main --count)
+          echo "Upstream has $UPSTREAM_COMMITS new commit(s)."
+
+          if [ "$UPSTREAM_COMMITS" -eq 0 ]; then
+            echo "✅ Fork is already up to date with upstream. Nothing to do."
+            exit 0
+          fi
+
+          echo "🔄 Merging $UPSTREAM_COMMITS commit(s) from upstream/main..."
+          git merge upstream/main --no-edit --allow-unrelated-histories
+
+      - name: Push changes
+        run: |
+          # 只在有新变更时 push
+          if [ "$(git status --porcelain)" = "" ] && git diff --quiet HEAD @{push} 2>/dev/null; then
+            echo "✅ No changes to push."
+          else
+            git push origin main
+            echo "🚀 Successfully synced with upstream!"
+          fi
